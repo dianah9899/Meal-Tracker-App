@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meal Tracker</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; }
+    select option { background: #1f2937; }
+    select optgroup { background: #111827; font-style: normal; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { opacity: 1; }
+  </style>
+</head>
+<body class="bg-gray-950 text-white">
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const DAILY_GOAL  = 1579;
+const STORE_KEY   = 'mt_diary_v1';
+
+// ─── Food Bank ────────────────────────────────────────────────────────────────
+const FOOD_BANK = [
+  // Protein
+  { id:'p1',  cat:'Protein',    name:'Lean meats (Chicken, Turkey, Pastrami)',       serving:'170g',     cal:280, pro:50,   fat:6,    carb:0  },
+  { id:'p2',  cat:'Protein',    name:'Fat meats (Beef, Beef fillet)',                serving:'120g',     cal:250, pro:28,   fat:15,   carb:0  },
+  { id:'p3',  cat:'Protein',    name:'Lean fish (Tuna/water, Nile perch, Tilapia)', serving:'195g',     cal:220, pro:45,   fat:3,    carb:0  },
+  { id:'p4',  cat:'Protein',    name:'Fatty fish (Salmon, Bream, Tuna/oil)',         serving:'120g',     cal:240, pro:24,   fat:14,   carb:0  },
+  { id:'p5',  cat:'Protein',    name:'White spread cheese 5%',                       serving:'250g',     cal:235, pro:23,   fat:12.5, carb:10 },
+  { id:'p6',  cat:'Protein',    name:'White spread cheese 3%',                       serving:'290g',     cal:215, pro:25,   fat:8.7,  carb:11 },
+  { id:'p7',  cat:'Protein',    name:'Feta / Bulgarian cheese 5%',                   serving:'145g',     cal:180, pro:20,   fat:7.25, carb:4  },
+  { id:'p8',  cat:'Protein',    name:'Yellow cheese 9%',                             serving:'4 slices', cal:180, pro:24,   fat:8,    carb:0  },
+  { id:'p9',  cat:'Protein',    name:'Eggs (4 total, only 2 yolks)',                 serving:'4 units',  cal:230, pro:24,   fat:10,   carb:2  },
+  { id:'p10', cat:'Protein',    name:'Pro protein yogurt (max 120 cal/unit)',        serving:'2 units',  cal:240, pro:40,   fat:0,    carb:14 },
+  // Carbs
+  { id:'c1',  cat:'Carbs',      name:'White bread / Pita',                           serving:'65g',      cal:170, pro:5,    fat:1,    carb:35 },
+  { id:'c2',  cat:'Carbs',      name:'White rice / Rice noodles (cooked)',           serving:'130g',     cal:170, pro:3,    fat:0,    carb:38 },
+  { id:'c3',  cat:'Carbs',      name:'Potatoes (cooked)',                            serving:'195g',     cal:170, pro:4,    fat:0,    carb:39 },
+  { id:'c4',  cat:'Carbs',      name:'White pasta / Ptitim / Couscous (cooked)',     serving:'100g',     cal:160, pro:5,    fat:1,    carb:32 },
+  { id:'c5',  cat:'Carbs',      name:'Whole wheat pita (99 cal/unit)',               serving:'1.5 units',cal:148, pro:6,    fat:1,    carb:30 },
+  { id:'c6',  cat:'Carbs',      name:'Lean bread (40 cal/unit)',                     serving:'3 units',  cal:120, pro:6,    fat:1,    carb:24 },
+  // Vegetables
+  { id:'v1',  cat:'Vegetables', name:'Colorful veggies (Bell pepper, Beet, Pumpkin)',serving:'160g',     cal:60,  pro:2,    fat:0,    carb:12 },
+  { id:'v2',  cat:'Vegetables', name:'Green veggies (Cucumber, Tomato, Mushrooms)', serving:'260g',     cal:50,  pro:3,    fat:0,    carb:8  },
+];
+
+const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+
+const CAT_STYLE = {
+  Protein:    { text: 'text-blue-400',   bg: 'bg-blue-400/10 border-blue-400/20',   dot: 'bg-blue-400'   },
+  Carbs:      { text: 'text-amber-400',  bg: 'bg-amber-400/10 border-amber-400/20', dot: 'bg-amber-400'  },
+  Vegetables: { text: 'text-emerald-400',bg: 'bg-emerald-400/10 border-emerald-400/20', dot: 'bg-emerald-400' },
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const r1 = n => Math.round(n * 10) / 10;
+
+function loadDiary() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; }
+  catch { return []; }
+}
+
+// ─── MealCard Component ───────────────────────────────────────────────────────
+function MealCard({ slot, entries, onAdd, onRemove }) {
+  const [foodId,  setFoodId]  = useState(FOOD_BANK[0].id);
+  const [portion, setPortion] = useState('1');
+  const [error,   setError]   = useState('');
+
+  const slotEntries = entries.filter(e => e.slot === slot);
+  const slotCals    = r1(slotEntries.reduce((s, e) => s + e.cal, 0));
+
+  function handleAdd() {
+    const food = FOOD_BANK.find(f => f.id === foodId);
+    const p    = parseFloat(portion);
+    if (!food)           return setError('Select a food item.');
+    if (isNaN(p) || p <= 0) return setError('Enter a valid portion > 0.');
+    setError('');
+    onAdd({
+      id:   Date.now() + Math.random(),
+      slot,
+      foodId:   food.id,
+      name:     food.name,
+      cat:      food.cat,
+      serving:  food.serving,
+      portion:  p,
+      cal:  r1(food.cal  * p),
+      pro:  r1(food.pro  * p),
+      fat:  r1(food.fat  * p),
+      carb: r1(food.carb * p),
+    });
+    setPortion('1');
+  }
+
+  return (
+    <div className="bg-gray-800/60 rounded-2xl border border-gray-700/40 overflow-hidden">
+
+      {/* Card header */}
+      <div className="px-4 py-3 bg-gray-700/40 flex justify-between items-center border-b border-gray-700/40">
+        <h3 className="font-semibold text-white text-sm tracking-wide">{slot}</h3>
+        <span className="text-xs font-mono text-gray-300 bg-gray-900/50 px-2 py-0.5 rounded-md">
+          {slotCals} kcal
+        </span>
+      </div>
+
+      {/* Logged items */}
+      <div className="px-3 pt-2 pb-1 space-y-1.5">
+        {slotEntries.length === 0 && (
+          <p className="text-xs text-gray-600 italic py-1.5 px-1">Nothing logged yet — add something below.</p>
+        )}
+        {slotEntries.map(e => (
+          <div key={e.id} className={`flex items-start gap-2 rounded-xl px-3 py-2 border ${CAT_STYLE[e.cat].bg}`}>
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${CAT_STYLE[e.cat].dot}`} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${CAT_STYLE[e.cat].text}`}>{e.cat}</span>
+                <span className="text-xs text-white font-medium truncate">{e.name}</span>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                <span className="text-gray-300">{e.portion}×</span> {e.serving}
+                &nbsp;·&nbsp;<span className="text-blue-300">{e.pro}g P</span>
+                &nbsp;·&nbsp;<span className="text-amber-300">{e.carb}g C</span>
+                &nbsp;·&nbsp;<span className="text-purple-300">{e.fat}g F</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 ml-1">
+              <span className="text-sm font-bold tabular-nums text-white">{e.cal}</span>
+              <button
+                onClick={() => onRemove(e.id)}
+                className="w-5 h-5 rounded-full bg-gray-700 hover:bg-red-500 text-gray-400 hover:text-white text-xs font-bold flex items-center justify-center transition-all duration-150"
+                title="Remove"
+              >×</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Add row */}
+      <div className="px-3 pb-3 pt-2 border-t border-gray-700/30 space-y-2">
+        <div className="flex gap-2">
+          <select
+            value={foodId}
+            onChange={e => { setFoodId(e.target.value); setError(''); }}
+            className="flex-1 min-w-0 bg-gray-900 text-white text-xs rounded-xl px-3 py-2 border border-gray-600/60 focus:border-gray-400 focus:outline-none appearance-none cursor-pointer"
+          >
+            {['Protein','Carbs','Vegetables'].map(cat => (
+              <optgroup key={cat} label={`── ${cat} ──`}>
+                {FOOD_BANK.filter(f => f.cat === cat).map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} · {f.cal} kcal / {f.serving}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <input
+            type="number"
+            value={portion}
+            onChange={e => { setPortion(e.target.value); setError(''); }}
+            onKeyDown={e => e.key === 'Enter' && handleAdd()}
+            step="0.25"
+            min="0.1"
+            placeholder="×"
+            className="w-20 bg-gray-900 text-white text-sm rounded-xl px-2 py-2 border border-gray-600/60 focus:border-gray-400 focus:outline-none text-center"
+          />
+          <button
+            onClick={handleAdd}
+            className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors whitespace-nowrap"
+          >
+            + Add
+          </button>
+        </div>
+        {error && <p className="text-xs text-red-400 px-1">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Stat Pill ────────────────────────────────────────────────────────────────
+function StatPill({ label, value, unit, color, bg }) {
+  return (
+    <div className={`${bg} rounded-2xl p-3 text-center flex-1`}>
+      <p className={`text-2xl font-extrabold tabular-nums ${color}`}>
+        {value}<span className="text-sm font-semibold ml-0.5">{unit}</span>
+      </p>
+      <p className="text-[11px] text-gray-400 mt-0.5 uppercase tracking-widest">{label}</p>
+    </div>
+  );
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [diary, setDiary] = useState(loadDiary);
+
+  // Persist on every change
+  useEffect(() => {
+    localStorage.setItem(STORE_KEY, JSON.stringify(diary));
+  }, [diary]);
+
+  const addEntry    = entry => setDiary(prev => [...prev, entry]);
+  const removeEntry = id    => setDiary(prev => prev.filter(e => e.id !== id));
+
+  function handleNewDay() {
+    if (window.confirm('Start a new day? All logged meals will be cleared.')) {
+      setDiary([]);
+    }
+  }
+
+  // Totals
+  const totals = diary.reduce(
+    (acc, e) => ({ cal: acc.cal + e.cal, pro: acc.pro + e.pro, fat: acc.fat + e.fat, carb: acc.carb + e.carb }),
+    { cal: 0, pro: 0, fat: 0, carb: 0 }
+  );
+  const consumed  = r1(totals.cal);
+  const remaining = r1(DAILY_GOAL - consumed);
+  const pct       = Math.min((consumed / DAILY_GOAL) * 100, 100);
+  const isOver    = remaining < 0;
+
+  const barColor = pct < 70
+    ? 'from-emerald-500 to-emerald-400'
+    : pct < 90
+      ? 'from-amber-500 to-amber-400'
+      : 'from-red-500 to-red-400';
+
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric'
+  });
+
+  return (
+    <div className="min-h-screen bg-gray-950">
+
+      {/* ── Header ── */}
+      <header className="sticky top-0 z-20 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800/80 px-4 py-3">
+        <div className="max-w-2xl mx-auto flex justify-between items-center">
+          <div>
+            <h1 className="text-base font-extrabold tracking-tight">Meal Tracker</h1>
+            <p className="text-[11px] text-gray-500 mt-0.5">{today}</p>
+          </div>
+          <button
+            onClick={handleNewDay}
+            className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 px-3 py-1.5 rounded-xl transition-all font-semibold"
+          >
+            ↺ New Day
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-2xl mx-auto px-4 py-5 space-y-4 pb-16">
+
+        {/* ── Daily Summary Card ── */}
+        <div className="bg-gray-800/70 rounded-2xl border border-gray-700/40 p-5 space-y-5">
+
+          {/* Calorie headline */}
+          <div className="flex justify-between items-end">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.15em] text-gray-500 mb-1">Today's Intake</p>
+              <div className="flex items-end gap-2">
+                <span className="text-5xl font-black tabular-nums leading-none">{consumed}</span>
+                <span className="text-sm text-gray-400 mb-1">/ {DAILY_GOAL} kcal</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-[0.15em] text-gray-500 mb-1">
+                {isOver ? 'Over Budget' : 'Remaining'}
+              </p>
+              <p className={`text-3xl font-black tabular-nums ${isOver ? 'text-red-400' : 'text-emerald-400'}`}>
+                {isOver ? '+' : ''}{Math.abs(remaining)}
+                <span className="text-base font-semibold ml-1">kcal</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div>
+            <div className="h-3.5 bg-gray-700/80 rounded-full overflow-hidden">
+              <div
+                className={`h-full bg-gradient-to-r ${barColor} rounded-full transition-all duration-700 ease-out`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-gray-600 mt-1 px-0.5">
+              <span>0</span>
+              <span className={`font-bold ${isOver ? 'text-red-400' : pct > 80 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {Math.round(pct)}%
+              </span>
+              <span>{DAILY_GOAL} kcal</span>
+            </div>
+          </div>
+
+          {/* Macro pills */}
+          <div className="flex gap-2.5">
+            <StatPill label="Protein" value={r1(totals.pro)}  unit="g" color="text-blue-400"   bg="bg-blue-400/10"   />
+            <StatPill label="Carbs"   value={r1(totals.carb)} unit="g" color="text-amber-400"  bg="bg-amber-400/10"  />
+            <StatPill label="Fat"     value={r1(totals.fat)}  unit="g" color="text-purple-400" bg="bg-purple-400/10" />
+          </div>
+
+          {/* Meal breakdown mini-bar */}
+          {diary.length > 0 && (
+            <div className="border-t border-gray-700/40 pt-4 grid grid-cols-4 gap-2 text-center">
+              {MEALS.map(slot => {
+                const slotCals = r1(diary.filter(e => e.slot === slot).reduce((s, e) => s + e.cal, 0));
+                const slotPct  = consumed > 0 ? Math.round((slotCals / consumed) * 100) : 0;
+                return (
+                  <div key={slot}>
+                    <p className="text-sm font-bold text-white">{slotCals}</p>
+                    <p className="text-[10px] text-gray-500">{slot}</p>
+                    <p className="text-[10px] text-gray-600">{slotPct}%</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Meal Cards ── */}
+        {MEALS.map(slot => (
+          <MealCard
+            key={slot}
+            slot={slot}
+            entries={diary}
+            onAdd={addEntry}
+            onRemove={removeEntry}
+          />
+        ))}
+
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
