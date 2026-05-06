@@ -3,17 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Meal Tracker</title>
+  <title>Health Dashboard</title>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     * { box-sizing: border-box; }
-    select option { background: #1f2937; }
-    select optgroup { background: #111827; font-style: normal; }
+    body { -webkit-font-smoothing: antialiased; }
+    select option  { background: #1f2937; }
+    select optgroup { background: #111827; font-style: normal; font-weight: 600; }
     input[type=number]::-webkit-inner-spin-button,
     input[type=number]::-webkit-outer-spin-button { opacity: 1; }
+    .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
   </style>
 </head>
 <body class="bg-gray-950 text-white">
@@ -22,73 +26,135 @@
 const { useState, useEffect } = React;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const DAILY_GOAL  = 1579;
-const STORE_KEY   = 'mt_diary_v1';
+const DEFAULT_GOAL = 1579;
+
+const LS = {
+  profile:  'ht_profile_v1',
+  diary:    'ht_diary_v2',
+  workouts: 'ht_workouts_v1',
+  weights:  'ht_weights_v1',
+};
+
+const ACTIVITY_LEVELS = [
+  { value: '1.2',   label: 'Sedentary — little or no exercise'         },
+  { value: '1.375', label: 'Lightly active — 1–3 days/week'            },
+  { value: '1.55',  label: 'Moderately active — 3–5 days/week'         },
+  { value: '1.725', label: 'Very active — 6–7 days/week'               },
+  { value: '1.9',   label: 'Extra active — physical job + daily training' },
+];
 
 // ─── Food Bank ────────────────────────────────────────────────────────────────
 const FOOD_BANK = [
   // Protein
-  { id:'p1',  cat:'Protein',    name:'Lean meats (Chicken, Turkey, Pastrami)',       serving:'170g',     cal:280, pro:50,   fat:6,    carb:0  },
-  { id:'p2',  cat:'Protein',    name:'Fat meats (Beef, Beef fillet)',                serving:'120g',     cal:250, pro:28,   fat:15,   carb:0  },
-  { id:'p3',  cat:'Protein',    name:'Lean fish (Tuna/water, Nile perch, Tilapia)', serving:'195g',     cal:220, pro:45,   fat:3,    carb:0  },
-  { id:'p4',  cat:'Protein',    name:'Fatty fish (Salmon, Bream, Tuna/oil)',         serving:'120g',     cal:240, pro:24,   fat:14,   carb:0  },
-  { id:'p5',  cat:'Protein',    name:'White spread cheese 5%',                       serving:'250g',     cal:235, pro:23,   fat:12.5, carb:10 },
-  { id:'p6',  cat:'Protein',    name:'White spread cheese 3%',                       serving:'290g',     cal:215, pro:25,   fat:8.7,  carb:11 },
-  { id:'p7',  cat:'Protein',    name:'Feta / Bulgarian cheese 5%',                   serving:'145g',     cal:180, pro:20,   fat:7.25, carb:4  },
-  { id:'p8',  cat:'Protein',    name:'Yellow cheese 9%',                             serving:'4 slices', cal:180, pro:24,   fat:8,    carb:0  },
-  { id:'p9',  cat:'Protein',    name:'Eggs (4 total, only 2 yolks)',                 serving:'4 units',  cal:230, pro:24,   fat:10,   carb:2  },
-  { id:'p10', cat:'Protein',    name:'Pro protein yogurt (max 120 cal/unit)',        serving:'2 units',  cal:240, pro:40,   fat:0,    carb:14 },
+  { id:'p1',  cat:'Protein',    name:'Lean meats (Chicken, Turkey, Pastrami)',        serving:'170g',      cal:280, pro:50,   fat:6,    carb:0  },
+  { id:'p2',  cat:'Protein',    name:'Fat meats (Beef, Beef fillet)',                 serving:'120g',      cal:250, pro:28,   fat:15,   carb:0  },
+  { id:'p3',  cat:'Protein',    name:'Lean fish (Tuna/water, Nile perch, Tilapia)',  serving:'195g',      cal:220, pro:45,   fat:3,    carb:0  },
+  { id:'p4',  cat:'Protein',    name:'Fatty fish (Salmon, Bream, Tuna/oil)',          serving:'120g',      cal:240, pro:24,   fat:14,   carb:0  },
+  { id:'p5',  cat:'Protein',    name:'White spread cheese 5%',                        serving:'250g',      cal:235, pro:23,   fat:12.5, carb:10 },
+  { id:'p6',  cat:'Protein',    name:'White spread cheese 3%',                        serving:'290g',      cal:215, pro:25,   fat:8.7,  carb:11 },
+  { id:'p7',  cat:'Protein',    name:'Feta / Bulgarian cheese 5%',                    serving:'145g',      cal:180, pro:20,   fat:7.25, carb:4  },
+  { id:'p8',  cat:'Protein',    name:'Yellow cheese 9%',                              serving:'4 slices',  cal:180, pro:24,   fat:8,    carb:0  },
+  { id:'p9',  cat:'Protein',    name:'Eggs (4 total, only 2 yolks)',                  serving:'4 units',   cal:230, pro:24,   fat:10,   carb:2  },
+  { id:'p10', cat:'Protein',    name:'Pro protein yogurt (max 120 cal/unit)',         serving:'2 units',   cal:240, pro:40,   fat:0,    carb:14 },
   // Carbs
-  { id:'c1',  cat:'Carbs',      name:'White bread / Pita',                           serving:'65g',      cal:170, pro:5,    fat:1,    carb:35 },
-  { id:'c2',  cat:'Carbs',      name:'White rice / Rice noodles (cooked)',           serving:'130g',     cal:170, pro:3,    fat:0,    carb:38 },
-  { id:'c3',  cat:'Carbs',      name:'Potatoes (cooked)',                            serving:'195g',     cal:170, pro:4,    fat:0,    carb:39 },
-  { id:'c4',  cat:'Carbs',      name:'White pasta / Ptitim / Couscous (cooked)',     serving:'100g',     cal:160, pro:5,    fat:1,    carb:32 },
-  { id:'c5',  cat:'Carbs',      name:'Whole wheat pita (99 cal/unit)',               serving:'1.5 units',cal:148, pro:6,    fat:1,    carb:30 },
-  { id:'c6',  cat:'Carbs',      name:'Lean bread (40 cal/unit)',                     serving:'3 units',  cal:120, pro:6,    fat:1,    carb:24 },
+  { id:'c1',  cat:'Carbs',      name:'White bread / Pita',                            serving:'65g',       cal:170, pro:5,    fat:1,    carb:35 },
+  { id:'c2',  cat:'Carbs',      name:'White rice / Rice noodles (cooked)',            serving:'130g',      cal:170, pro:3,    fat:0,    carb:38 },
+  { id:'c3',  cat:'Carbs',      name:'Potatoes (cooked)',                             serving:'195g',      cal:170, pro:4,    fat:0,    carb:39 },
+  { id:'c4',  cat:'Carbs',      name:'White pasta / Ptitim / Couscous (cooked)',      serving:'100g',      cal:160, pro:5,    fat:1,    carb:32 },
+  { id:'c5',  cat:'Carbs',      name:'Whole wheat pita (99 cal/unit)',                serving:'1.5 units', cal:148, pro:6,    fat:1,    carb:30 },
+  { id:'c6',  cat:'Carbs',      name:'Lean bread (40 cal/unit)',                      serving:'3 units',   cal:120, pro:6,    fat:1,    carb:24 },
   // Vegetables
-  { id:'v1',  cat:'Vegetables', name:'Colorful veggies (Bell pepper, Beet, Pumpkin)',serving:'160g',     cal:60,  pro:2,    fat:0,    carb:12 },
-  { id:'v2',  cat:'Vegetables', name:'Green veggies (Cucumber, Tomato, Mushrooms)', serving:'260g',     cal:50,  pro:3,    fat:0,    carb:8  },
+  { id:'v1',  cat:'Vegetables', name:'Colorful veggies (Bell pepper, Beet, Pumpkin)', serving:'160g',      cal:60,  pro:2,    fat:0,    carb:12 },
+  { id:'v2',  cat:'Vegetables', name:'Green veggies (Cucumber, Tomato, Mushrooms)',   serving:'260g',      cal:50,  pro:3,    fat:0,    carb:8  },
 ];
 
-const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
-
-const CAT_STYLE = {
-  Protein:    { text: 'text-blue-400',   bg: 'bg-blue-400/10 border-blue-400/20',   dot: 'bg-blue-400'   },
-  Carbs:      { text: 'text-amber-400',  bg: 'bg-amber-400/10 border-amber-400/20', dot: 'bg-amber-400'  },
-  Vegetables: { text: 'text-emerald-400',bg: 'bg-emerald-400/10 border-emerald-400/20', dot: 'bg-emerald-400' },
-};
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const r1 = n => Math.round(n * 10) / 10;
+const r1      = n  => Math.round(n * 10) / 10;
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
-function loadDiary() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; }
-  catch { return []; }
+function fmtDate(d) {
+  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric'
+  });
 }
 
-// ─── MealCard Component ───────────────────────────────────────────────────────
-function MealCard({ slot, entries, onAdd, onRemove }) {
+function shiftDate(d, days) {
+  const dt = new Date(d + 'T12:00:00');
+  dt.setDate(dt.getDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+function lsGet(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch { return fallback; }
+}
+
+function calcBMR({ sex, age, weight, height }) {
+  const a = parseFloat(age), w = parseFloat(weight), h = parseFloat(height);
+  if (!a || !w || !h) return null;
+  const base = 10 * w + 6.25 * h - 5 * a;
+  return sex === 'female' ? base - 161 : base + 5;
+}
+
+function calcTDEE(profile) {
+  const bmr = calcBMR(profile);
+  if (!bmr) return null;
+  return Math.round(bmr * parseFloat(profile.activity || 1.2));
+}
+
+function getGoal(profile) {
+  if (!profile) return DEFAULT_GOAL;
+  if (profile.useOverride) return parseInt(profile.customTdee) || DEFAULT_GOAL;
+  return calcTDEE(profile) || DEFAULT_GOAL;
+}
+
+// ─── Shared: category style maps (static strings for Tailwind CDN) ────────────
+const CAT_TEXT = { Protein: 'text-blue-400', Carbs: 'text-amber-400', Vegetables: 'text-emerald-400' };
+const CAT_BADGE = {
+  Protein:    'bg-blue-500/20 text-blue-300',
+  Carbs:      'bg-amber-500/20 text-amber-300',
+  Vegetables: 'bg-emerald-500/20 text-emerald-300',
+};
+const CAT_ROW = {
+  Protein:    'bg-blue-400/10 border-blue-400/20',
+  Carbs:      'bg-amber-400/10 border-amber-400/20',
+  Vegetables: 'bg-emerald-400/10 border-emerald-400/20',
+};
+const CAT_DOT = { Protein: 'bg-blue-400', Carbs: 'bg-amber-400', Vegetables: 'bg-emerald-400' };
+
+// ─── MealCard ─────────────────────────────────────────────────────────────────
+function MealCard({ slot, entries, onAdd, onRemove, mealTarget }) {
   const [foodId,  setFoodId]  = useState(FOOD_BANK[0].id);
   const [portion, setPortion] = useState('1');
-  const [error,   setError]   = useState('');
+  const [err,     setErr]     = useState('');
 
   const slotEntries = entries.filter(e => e.slot === slot);
-  const slotCals    = r1(slotEntries.reduce((s, e) => s + e.cal, 0));
+  const totals = slotEntries.reduce(
+    (a, e) => ({ cal: a.cal + e.cal, pro: a.pro + e.pro, fat: a.fat + e.fat, carb: a.carb + e.carb }),
+    { cal: 0, pro: 0, fat: 0, carb: 0 }
+  );
+
+  const pct      = Math.min((totals.cal / mealTarget) * 100, 100);
+  const remaining = r1(mealTarget - totals.cal);
+  const isOver   = totals.cal > mealTarget;
+  const barCls   = pct < 70 ? 'bg-emerald-500' : pct < 95 ? 'bg-amber-400' : 'bg-red-500';
+
+  const hasP = slotEntries.some(e => e.cat === 'Protein');
+  const hasC = slotEntries.some(e => e.cat === 'Carbs');
+  const hasV = slotEntries.some(e => e.cat === 'Vegetables');
 
   function handleAdd() {
     const food = FOOD_BANK.find(f => f.id === foodId);
     const p    = parseFloat(portion);
-    if (!food)           return setError('Select a food item.');
-    if (isNaN(p) || p <= 0) return setError('Enter a valid portion > 0.');
-    setError('');
+    if (!food || isNaN(p) || p <= 0) { setErr('Enter a valid portion > 0.'); return; }
+    setErr('');
     onAdd({
-      id:   Date.now() + Math.random(),
+      id:      Date.now() + Math.random(),
       slot,
-      foodId:   food.id,
-      name:     food.name,
-      cat:      food.cat,
-      serving:  food.serving,
-      portion:  p,
+      name:    food.name,
+      cat:     food.cat,
+      serving: food.serving,
+      portion: p,
       cal:  r1(food.cal  * p),
       pro:  r1(food.pro  * p),
       fat:  r1(food.fat  * p),
@@ -101,39 +167,61 @@ function MealCard({ slot, entries, onAdd, onRemove }) {
     <div className="bg-gray-800/60 rounded-2xl border border-gray-700/40 overflow-hidden">
 
       {/* Card header */}
-      <div className="px-4 py-3 bg-gray-700/40 flex justify-between items-center border-b border-gray-700/40">
-        <h3 className="font-semibold text-white text-sm tracking-wide">{slot}</h3>
-        <span className="text-xs font-mono text-gray-300 bg-gray-900/50 px-2 py-0.5 rounded-md">
-          {slotCals} kcal
-        </span>
+      <div className="px-4 py-3 bg-gray-700/30 border-b border-gray-700/40 flex justify-between items-start">
+        <div>
+          <h3 className="font-bold text-white tracking-wide">{slot}</h3>
+          <p className="text-[10px] text-gray-500 mt-0.5">Target: {mealTarget} kcal</p>
+        </div>
+        <div className="text-right space-y-1">
+          <p className={`text-sm font-bold tabular-nums ${isOver ? 'text-red-400' : 'text-white'}`}>
+            {r1(totals.cal)} <span className="text-[11px] font-normal text-gray-500">kcal</span>
+          </p>
+          <p className={`text-[10px] tabular-nums ${isOver ? 'text-red-400' : 'text-gray-500'}`}>
+            {isOver ? `+${Math.abs(remaining)} over` : `${remaining} left`}
+          </p>
+          {/* Rule-of-Three badges */}
+          <div className="flex gap-1 justify-end">
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${hasP ? 'bg-blue-500/20 text-blue-300' : 'bg-gray-700/80 text-gray-600'}`}>P</span>
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${hasC ? 'bg-amber-500/20 text-amber-300' : 'bg-gray-700/80 text-gray-600'}`}>C</span>
+            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${hasV ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-700/80 text-gray-600'}`}>V</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Meal progress bar */}
+      <div className="h-1 bg-gray-700/60">
+        <div className={`h-full ${barCls} transition-all duration-500`} style={{ width: `${pct}%` }} />
       </div>
 
       {/* Logged items */}
-      <div className="px-3 pt-2 pb-1 space-y-1.5">
+      <div className="px-3 pt-2 pb-1 space-y-1.5 min-h-[40px]">
         {slotEntries.length === 0 && (
-          <p className="text-xs text-gray-600 italic py-1.5 px-1">Nothing logged yet — add something below.</p>
+          <p className="text-xs text-gray-600 italic py-2 px-1">Nothing logged yet — add an item below.</p>
         )}
         {slotEntries.map(e => (
-          <div key={e.id} className={`flex items-start gap-2 rounded-xl px-3 py-2 border ${CAT_STYLE[e.cat].bg}`}>
-            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${CAT_STYLE[e.cat].dot}`} />
+          <div key={e.id} className={`flex items-start gap-2 rounded-xl px-3 py-2 border ${CAT_ROW[e.cat]}`}>
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${CAT_DOT[e.cat]}`} />
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${CAT_STYLE[e.cat].text}`}>{e.cat}</span>
-                <span className="text-xs text-white font-medium truncate">{e.name}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className={`text-[9px] font-extrabold uppercase tracking-wider ${CAT_TEXT[e.cat]}`}>{e.cat}</span>
+                <span className="text-xs text-white font-medium leading-snug">{e.name}</span>
               </div>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                <span className="text-gray-300">{e.portion}×</span> {e.serving}
-                &nbsp;·&nbsp;<span className="text-blue-300">{e.pro}g P</span>
-                &nbsp;·&nbsp;<span className="text-amber-300">{e.carb}g C</span>
-                &nbsp;·&nbsp;<span className="text-purple-300">{e.fat}g F</span>
+              <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
+                <span className="text-gray-300 font-semibold">{e.portion}×</span> {e.serving}
+                <span className="mx-1 text-gray-600">·</span>
+                <span className="text-blue-300">{e.pro}g P</span>
+                <span className="mx-1 text-gray-600">·</span>
+                <span className="text-amber-300">{e.carb}g C</span>
+                <span className="mx-1 text-gray-600">·</span>
+                <span className="text-purple-300">{e.fat}g F</span>
               </p>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0 ml-1">
+            <div className="flex items-center gap-2 flex-shrink-0 ml-1 mt-0.5">
               <span className="text-sm font-bold tabular-nums text-white">{e.cal}</span>
               <button
                 onClick={() => onRemove(e.id)}
-                className="w-5 h-5 rounded-full bg-gray-700 hover:bg-red-500 text-gray-400 hover:text-white text-xs font-bold flex items-center justify-center transition-all duration-150"
                 title="Remove"
+                className="w-5 h-5 rounded-full bg-gray-700 hover:bg-red-500 text-gray-400 hover:text-white text-xs font-bold flex items-center justify-center transition-colors"
               >×</button>
             </div>
           </div>
@@ -145,14 +233,14 @@ function MealCard({ slot, entries, onAdd, onRemove }) {
         <div className="flex gap-2">
           <select
             value={foodId}
-            onChange={e => { setFoodId(e.target.value); setError(''); }}
-            className="flex-1 min-w-0 bg-gray-900 text-white text-xs rounded-xl px-3 py-2 border border-gray-600/60 focus:border-gray-400 focus:outline-none appearance-none cursor-pointer"
+            onChange={e => { setFoodId(e.target.value); setErr(''); }}
+            className="flex-1 min-w-0 bg-gray-900 text-white text-xs rounded-xl px-3 py-2 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none cursor-pointer"
           >
-            {['Protein','Carbs','Vegetables'].map(cat => (
+            {['Protein', 'Carbs', 'Vegetables'].map(cat => (
               <optgroup key={cat} label={`── ${cat} ──`}>
                 {FOOD_BANK.filter(f => f.cat === cat).map(f => (
                   <option key={f.id} value={f.id}>
-                    {f.name} · {f.cal} kcal / {f.serving}
+                    {f.name}  ·  {f.serving}  ·  {f.cal} kcal
                   </option>
                 ))}
               </optgroup>
@@ -161,173 +249,671 @@ function MealCard({ slot, entries, onAdd, onRemove }) {
           <input
             type="number"
             value={portion}
-            onChange={e => { setPortion(e.target.value); setError(''); }}
+            onChange={e => { setPortion(e.target.value); setErr(''); }}
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
-            step="0.25"
-            min="0.1"
-            placeholder="×"
-            className="w-20 bg-gray-900 text-white text-sm rounded-xl px-2 py-2 border border-gray-600/60 focus:border-gray-400 focus:outline-none text-center"
+            step="0.25" min="0.1" placeholder="×"
+            className="w-16 bg-gray-900 text-white text-sm rounded-xl px-2 py-2 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none text-center"
           />
           <button
             onClick={handleAdd}
-            className="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition-colors whitespace-nowrap"
-          >
-            + Add
-          </button>
+            className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-xl transition-all whitespace-nowrap"
+          >+ Add</button>
         </div>
-        {error && <p className="text-xs text-red-400 px-1">{error}</p>}
+        {err && <p className="text-xs text-red-400 px-1">{err}</p>}
       </div>
     </div>
   );
 }
 
-// ─── Stat Pill ────────────────────────────────────────────────────────────────
-function StatPill({ label, value, unit, color, bg }) {
+// ─── DiaryTab ─────────────────────────────────────────────────────────────────
+function DiaryTab({ diary, onAdd, onRemove, date, setDate, dailyGoal }) {
+  const entries    = diary[date] || [];
+  const mealTarget = Math.round(dailyGoal / 2);
+  const isToday    = date === todayStr();
+
+  const totals = entries.reduce(
+    (a, e) => ({ cal: a.cal + e.cal, pro: a.pro + e.pro, fat: a.fat + e.fat, carb: a.carb + e.carb }),
+    { cal: 0, pro: 0, fat: 0, carb: 0 }
+  );
+
+  const consumed  = r1(totals.cal);
+  const remaining = r1(dailyGoal - consumed);
+  const isOver    = remaining < 0;
+  const pct       = Math.min((consumed / dailyGoal) * 100, 100);
+  const barGrad   = pct < 70 ? 'from-emerald-500 to-emerald-400'
+                  : pct < 90 ? 'from-amber-500 to-amber-400'
+                  :             'from-red-500 to-red-400';
+
   return (
-    <div className={`${bg} rounded-2xl p-3 text-center flex-1`}>
-      <p className={`text-2xl font-extrabold tabular-nums ${color}`}>
-        {value}<span className="text-sm font-semibold ml-0.5">{unit}</span>
-      </p>
-      <p className="text-[11px] text-gray-400 mt-0.5 uppercase tracking-widest">{label}</p>
+    <div className="space-y-4">
+
+      {/* Date navigator */}
+      <div className="flex items-center justify-between bg-gray-800/60 rounded-2xl border border-gray-700/40 px-4 py-3">
+        <button
+          onClick={() => setDate(shiftDate(date, -1))}
+          className="w-9 h-9 rounded-xl bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-gray-300 hover:text-white transition-colors text-lg leading-none"
+        >‹</button>
+        <div className="text-center">
+          <p className="font-bold text-white">{fmtDate(date)}</p>
+          {isToday
+            ? <p className="text-[10px] text-emerald-400 font-semibold mt-0.5">Today</p>
+            : <p className="text-[10px] text-gray-500 mt-0.5">{date}</p>
+          }
+        </div>
+        <button
+          onClick={() => setDate(shiftDate(date, 1))}
+          disabled={isToday}
+          className="w-9 h-9 rounded-xl bg-gray-700 hover:bg-gray-600 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-gray-300 hover:text-white transition-colors text-lg leading-none"
+        >›</button>
+      </div>
+
+      {/* Daily summary card */}
+      <div className="bg-gray-800/70 rounded-2xl border border-gray-700/40 p-5 space-y-5">
+
+        {/* Headline numbers */}
+        <div className="flex justify-between items-end">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.15em] text-gray-500 mb-1">Daily Intake</p>
+            <div className="flex items-end gap-2 leading-none">
+              <span className="text-5xl font-black tabular-nums">{consumed}</span>
+              <span className="text-sm text-gray-400 pb-1">/ {dailyGoal} kcal</span>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-[0.15em] text-gray-500 mb-1">
+              {isOver ? 'Over budget' : 'Remaining'}
+            </p>
+            <p className={`text-3xl font-black tabular-nums leading-none ${isOver ? 'text-red-400' : 'text-emerald-400'}`}>
+              {isOver ? '+' : ''}{Math.abs(remaining)}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">kcal</p>
+          </div>
+        </div>
+
+        {/* Daily progress bar */}
+        <div>
+          <div className="h-3.5 bg-gray-700/80 rounded-full overflow-hidden">
+            <div
+              className={`h-full bg-gradient-to-r ${barGrad} rounded-full transition-all duration-700 ease-out`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-[10px] text-gray-600 mt-1 px-0.5">
+            <span>0</span>
+            <span className={`font-bold ${pct > 90 ? 'text-red-400' : pct > 70 ? 'text-amber-400' : 'text-emerald-400'}`}>
+              {Math.round(pct)}%
+            </span>
+            <span>{dailyGoal}</span>
+          </div>
+        </div>
+
+        {/* Macro pills */}
+        <div className="grid grid-cols-3 gap-2.5">
+          {[
+            { label: 'Protein', val: r1(totals.pro),  unit: 'g', col: 'text-blue-400',   bg: 'bg-blue-400/10'   },
+            { label: 'Carbs',   val: r1(totals.carb), unit: 'g', col: 'text-amber-400',  bg: 'bg-amber-400/10'  },
+            { label: 'Fat',     val: r1(totals.fat),  unit: 'g', col: 'text-purple-400', bg: 'bg-purple-400/10' },
+          ].map(m => (
+            <div key={m.label} className={`${m.bg} rounded-2xl p-3 text-center`}>
+              <p className={`text-2xl font-extrabold tabular-nums leading-none ${m.col}`}>
+                {m.val}<span className="text-xs font-semibold ml-0.5">{m.unit}</span>
+              </p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">{m.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Meal symmetry bars */}
+        <div className="grid grid-cols-2 gap-4 border-t border-gray-700/40 pt-4">
+          {['Lunch', 'Dinner'].map(slot => {
+            const sc   = r1(entries.filter(e => e.slot === slot).reduce((s, e) => s + e.cal, 0));
+            const sp   = Math.min((sc / mealTarget) * 100, 100);
+            const scol = sp < 70 ? 'bg-emerald-500' : sp < 95 ? 'bg-amber-400' : 'bg-red-500';
+            const hasAllThree = ['Protein','Carbs','Vegetables'].every(
+              c => entries.filter(e => e.slot === slot).some(e => e.cat === c)
+            );
+            return (
+              <div key={slot}>
+                <div className="flex justify-between items-center mb-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-gray-300">{slot}</span>
+                    {hasAllThree && <span className="text-[9px] text-emerald-400 font-bold">✓ complete</span>}
+                  </div>
+                  <span className="text-xs tabular-nums text-white font-semibold">
+                    {sc} <span className="text-gray-500 font-normal">/ {mealTarget}</span>
+                  </span>
+                </div>
+                <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                  <div className={`h-full ${scol} rounded-full transition-all duration-500`} style={{ width: `${sp}%` }} />
+                </div>
+                <p className="text-[10px] text-gray-600 mt-0.5 text-right">{Math.round(sp)}%</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Meal cards — Lunch & Dinner only */}
+      {['Lunch', 'Dinner'].map(slot => (
+        <MealCard
+          key={slot}
+          slot={slot}
+          entries={entries}
+          onAdd={entry => onAdd(date, entry)}
+          onRemove={id   => onRemove(date, id)}
+          mealTarget={mealTarget}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── WorkoutsTab ──────────────────────────────────────────────────────────────
+function WorkoutsTab({ workouts, setWorkouts }) {
+  const [showForm,    setShowForm]    = useState(false);
+  const [wName,       setWName]       = useState('');
+  const [exercises,   setExercises]   = useState([{ name: '', sets: '', reps: '' }]);
+  const [expandedId,  setExpandedId]  = useState(null);
+  const [formErr,     setFormErr]     = useState('');
+
+  function addExRow() {
+    setExercises(prev => [...prev, { name: '', sets: '', reps: '' }]);
+  }
+
+  function updateEx(i, field, val) {
+    setExercises(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e));
+  }
+
+  function removeEx(i) {
+    if (exercises.length === 1) return;
+    setExercises(prev => prev.filter((_, idx) => idx !== i));
+  }
+
+  function resetForm() {
+    setWName(''); setExercises([{ name: '', sets: '', reps: '' }]);
+    setFormErr(''); setShowForm(false);
+  }
+
+  function saveWorkout() {
+    if (!wName.trim()) { setFormErr('Give this workout a name.'); return; }
+    const valid = exercises.filter(e => e.name.trim());
+    if (!valid.length) { setFormErr('Add at least one exercise.'); return; }
+    setWorkouts(prev => [...prev, {
+      id:         Date.now(),
+      name:       wName.trim(),
+      createdAt:  todayStr(),
+      exercises:  valid.map((e, i) => ({ ...e, id: i + Date.now() })),
+    }]);
+    resetForm();
+  }
+
+  function deleteWorkout(id) {
+    if (window.confirm('Delete this workout?')) {
+      setWorkouts(prev => prev.filter(w => w.id !== id));
+      if (expandedId === id) setExpandedId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+
+      <div className="flex justify-between items-center">
+        <h2 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest">Saved Workouts</h2>
+        <button
+          onClick={() => { setShowForm(v => !v); setFormErr(''); }}
+          className={`text-xs font-bold px-3 py-1.5 rounded-xl transition-all ${showForm ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-emerald-600 hover:bg-emerald-500 text-white'}`}
+        >
+          {showForm ? '✕ Cancel' : '+ New Workout'}
+        </button>
+      </div>
+
+      {/* Create form */}
+      {showForm && (
+        <div className="bg-gray-800/70 rounded-2xl border border-gray-700/40 p-4 space-y-4">
+          <input
+            type="text"
+            placeholder="Workout name  (e.g. Push Day, Upper Body)"
+            value={wName}
+            onChange={e => { setWName(e.target.value); setFormErr(''); }}
+            className="w-full bg-gray-900 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none placeholder-gray-600"
+          />
+
+          <div className="space-y-2">
+            <div className="grid grid-cols-[1fr_56px_56px_28px] gap-2">
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest">Exercise</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest text-center">Sets</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest text-center">Reps</p>
+              <span />
+            </div>
+            {exercises.map((ex, i) => (
+              <div key={i} className="grid grid-cols-[1fr_56px_56px_28px] gap-2">
+                <input
+                  type="text"
+                  placeholder="e.g. Bench Press"
+                  value={ex.name}
+                  onChange={e => updateEx(i, 'name', e.target.value)}
+                  className="bg-gray-900 text-white text-xs rounded-xl px-3 py-2 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none placeholder-gray-600"
+                />
+                <input
+                  type="text"
+                  placeholder="4"
+                  value={ex.sets}
+                  onChange={e => updateEx(i, 'sets', e.target.value)}
+                  className="bg-gray-900 text-white text-xs rounded-xl px-2 py-2 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none text-center placeholder-gray-600"
+                />
+                <input
+                  type="text"
+                  placeholder="12"
+                  value={ex.reps}
+                  onChange={e => updateEx(i, 'reps', e.target.value)}
+                  className="bg-gray-900 text-white text-xs rounded-xl px-2 py-2 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none text-center placeholder-gray-600"
+                />
+                <button
+                  onClick={() => removeEx(i)}
+                  disabled={exercises.length === 1}
+                  className="h-full rounded-lg bg-gray-700 hover:bg-red-500/80 disabled:opacity-20 text-xs text-gray-400 hover:text-white flex items-center justify-center transition-colors"
+                >×</button>
+              </div>
+            ))}
+            <button
+              onClick={addExRow}
+              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
+            >+ add exercise row</button>
+          </div>
+
+          {formErr && <p className="text-xs text-red-400">{formErr}</p>}
+
+          <button
+            onClick={saveWorkout}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold py-2.5 rounded-xl transition-colors"
+          >Save Workout</button>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {workouts.length === 0 && !showForm && (
+        <div className="text-center py-16 text-gray-600 space-y-2">
+          <p className="text-5xl">🏋️</p>
+          <p className="text-sm font-medium">No workouts yet</p>
+          <p className="text-xs text-gray-700">Hit "New Workout" to build your first routine.</p>
+        </div>
+      )}
+
+      {/* Workout list */}
+      {workouts.map(w => (
+        <div key={w.id} className="bg-gray-800/60 rounded-2xl border border-gray-700/40 overflow-hidden">
+          <div
+            className="px-4 py-3.5 flex justify-between items-center cursor-pointer hover:bg-gray-700/30 transition-colors select-none"
+            onClick={() => setExpandedId(v => v === w.id ? null : w.id)}
+          >
+            <div>
+              <p className="font-bold text-white">{w.name}</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                {w.exercises.length} exercise{w.exercises.length !== 1 ? 's' : ''}
+                &ensp;·&ensp;{fmtDate(w.createdAt)}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={e => { e.stopPropagation(); deleteWorkout(w.id); }}
+                className="w-7 h-7 rounded-lg bg-gray-700 hover:bg-red-500/80 text-gray-400 hover:text-white text-xs flex items-center justify-center transition-colors"
+              >×</button>
+              <span className="text-gray-500 text-xs select-none">{expandedId === w.id ? '▲' : '▼'}</span>
+            </div>
+          </div>
+          {expandedId === w.id && (
+            <div className="border-t border-gray-700/40 px-4 py-3 space-y-1.5">
+              {w.exercises.map((ex, i) => (
+                <div key={ex.id || i} className="flex items-center gap-3 bg-gray-900/60 rounded-xl px-3 py-2.5">
+                  <span className="text-xs text-gray-600 w-5 text-right flex-shrink-0">{i + 1}.</span>
+                  <span className="flex-1 text-sm text-white">{ex.name}</span>
+                  <span className="text-[11px] bg-gray-700/80 text-gray-300 px-2 py-0.5 rounded-md whitespace-nowrap">{ex.sets} sets</span>
+                  <span className="text-[11px] bg-gray-700/80 text-gray-300 px-2 py-0.5 rounded-md whitespace-nowrap">{ex.reps} reps</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── ProfileTab ───────────────────────────────────────────────────────────────
+function ProfileTab({ profile, setProfile, weights, setWeights }) {
+  const [form,    setForm]    = useState({ ...profile });
+  const [wInput,  setWInput]  = useState('');
+  const [saved,   setSaved]   = useState(false);
+
+  const bmr     = calcBMR(form);
+  const tdee    = calcTDEE(form);
+  const effGoal = form.useOverride
+    ? (parseInt(form.customTdee) || DEFAULT_GOAL)
+    : (tdee || DEFAULT_GOAL);
+
+  function handleSave() {
+    setProfile({ ...form });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  function logWeight() {
+    const w = parseFloat(wInput);
+    if (isNaN(w) || w <= 0) return;
+    const d = todayStr();
+    setWeights(prev => {
+      const without = prev.filter(e => e.date !== d);
+      return [...without, { date: d, weight: w }].sort((a, b) => b.date.localeCompare(a.date));
+    });
+    setWInput('');
+  }
+
+  // Trend: compare two most recent entries
+  const w0 = weights[0], w1 = weights[1];
+  const delta = (w0 && w1) ? r1(w0.weight - w1.weight) : null;
+  const trendUp   = delta > 0;
+  const trendDown = delta < 0;
+
+  return (
+    <div className="space-y-4">
+
+      {/* ── TDEE Profile ── */}
+      <div className="bg-gray-800/70 rounded-2xl border border-gray-700/40 p-5 space-y-4">
+        <h2 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest">Profile & TDEE</h2>
+
+        <div className="grid grid-cols-2 gap-3">
+
+          {/* Sex selector */}
+          <div className="col-span-2">
+            <label className="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Sex</label>
+            <div className="flex gap-2">
+              {['male', 'female'].map(s => (
+                <button
+                  key={s}
+                  onClick={() => setForm(f => ({ ...f, sex: s }))}
+                  className={`flex-1 py-2 rounded-xl text-sm font-bold capitalize transition-all ${form.sex === s ? 'bg-emerald-600 text-white' : 'bg-gray-700/80 text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+                >{s}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Age */}
+          <div>
+            <label className="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Age</label>
+            <input
+              type="number" placeholder="e.g. 30"
+              value={form.age || ''}
+              onChange={e => setForm(f => ({ ...f, age: e.target.value }))}
+              className="w-full bg-gray-900 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none placeholder-gray-600"
+            />
+          </div>
+
+          {/* Weight */}
+          <div>
+            <label className="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Weight (kg)</label>
+            <input
+              type="number" placeholder="e.g. 75"
+              value={form.weight || ''}
+              onChange={e => setForm(f => ({ ...f, weight: e.target.value }))}
+              className="w-full bg-gray-900 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none placeholder-gray-600"
+            />
+          </div>
+
+          {/* Height */}
+          <div>
+            <label className="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Height (cm)</label>
+            <input
+              type="number" placeholder="e.g. 175"
+              value={form.height || ''}
+              onChange={e => setForm(f => ({ ...f, height: e.target.value }))}
+              className="w-full bg-gray-900 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none placeholder-gray-600"
+            />
+          </div>
+
+          {/* Activity */}
+          <div className="col-span-2">
+            <label className="block text-[10px] text-gray-500 uppercase tracking-widest mb-2">Activity Level</label>
+            <select
+              value={form.activity || '1.2'}
+              onChange={e => setForm(f => ({ ...f, activity: e.target.value }))}
+              className="w-full bg-gray-900 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none"
+            >
+              {ACTIVITY_LEVELS.map(a => (
+                <option key={a.value} value={a.value}>{a.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* TDEE result */}
+        {tdee && (
+          <div className="bg-gray-900/60 rounded-xl p-3.5 border border-gray-700/40">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-[10px] text-gray-500 uppercase tracking-widest">Calculated TDEE</p>
+                <p className="text-3xl font-black tabular-nums text-white mt-0.5">
+                  {tdee} <span className="text-sm font-normal text-gray-400">kcal/day</span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-gray-500 uppercase tracking-widest">BMR</p>
+                <p className="text-lg font-bold text-gray-300 mt-0.5">{Math.round(bmr)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Override toggle */}
+        <div className="space-y-3">
+          <label className="flex items-center gap-3 cursor-pointer select-none">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={form.useOverride}
+              onClick={() => setForm(f => ({ ...f, useOverride: !f.useOverride }))}
+              className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${form.useOverride ? 'bg-emerald-600' : 'bg-gray-700'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${form.useOverride ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+            <span className="text-sm text-gray-300 font-medium">Override TDEE with custom goal</span>
+          </label>
+          {form.useOverride && (
+            <input
+              type="number"
+              placeholder={`e.g. ${DEFAULT_GOAL}`}
+              value={form.customTdee || ''}
+              onChange={e => setForm(f => ({ ...f, customTdee: e.target.value }))}
+              className="w-full bg-gray-900 text-white text-sm rounded-xl px-3 py-2.5 border border-amber-500/40 focus:border-amber-500/70 focus:outline-none placeholder-gray-600"
+            />
+          )}
+        </div>
+
+        {/* Active goal highlight */}
+        <div className={`rounded-xl p-3.5 flex justify-between items-center border ${form.useOverride ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-gray-400">Active Daily Goal</p>
+            <p className="text-[10px] text-gray-600 mt-0.5">{form.useOverride ? 'Manual override' : 'From TDEE calculation'}</p>
+          </div>
+          <p className={`text-3xl font-black tabular-nums ${form.useOverride ? 'text-amber-400' : 'text-emerald-400'}`}>
+            {effGoal} <span className="text-sm font-normal text-gray-400">kcal</span>
+          </p>
+        </div>
+
+        <button
+          onClick={handleSave}
+          className={`w-full py-2.5 rounded-xl text-sm font-bold transition-all ${saved ? 'bg-emerald-800 text-emerald-300 cursor-default' : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-[0.98]'}`}
+        >{saved ? '✓ Profile Saved' : 'Save Profile'}</button>
+      </div>
+
+      {/* ── Weight Logger ── */}
+      <div className="bg-gray-800/70 rounded-2xl border border-gray-700/40 p-5 space-y-4">
+
+        <div className="flex justify-between items-center">
+          <h2 className="text-xs font-extrabold text-gray-400 uppercase tracking-widest">Weight History</h2>
+          {delta !== null && (
+            <span className={`text-xs font-bold flex items-center gap-1 ${trendDown ? 'text-emerald-400' : trendUp ? 'text-red-400' : 'text-gray-500'}`}>
+              {trendDown ? '↓ Trending down' : trendUp ? '↑ Trending up' : '→ Stable'}
+              <span className="text-gray-500 font-normal">({trendUp ? '+' : ''}{delta} kg)</span>
+            </span>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            type="number"
+            step="0.1"
+            min="1"
+            placeholder="Today's weight (kg)"
+            value={wInput}
+            onChange={e => setWInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && logWeight()}
+            className="flex-1 bg-gray-900 text-white text-sm rounded-xl px-3 py-2.5 border border-gray-600/60 focus:border-emerald-500/60 focus:outline-none placeholder-gray-600"
+          />
+          <button
+            onClick={logWeight}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-colors whitespace-nowrap"
+          >Log Weight</button>
+        </div>
+
+        {weights.length === 0 ? (
+          <p className="text-xs text-gray-600 italic text-center py-6">No entries yet. Log your first weight above.</p>
+        ) : (
+          <div className="space-y-1.5 max-h-72 overflow-y-auto scrollbar-thin pr-1">
+            {weights.map((w, i) => {
+              const prev  = weights[i + 1];
+              const d     = prev ? r1(w.weight - prev.weight) : null;
+              const up    = d > 0;
+              const dn    = d < 0;
+              const isT   = w.date === todayStr();
+              return (
+                <div key={w.date} className="flex items-center justify-between bg-gray-900/60 rounded-xl px-3.5 py-2.5 border border-gray-700/30">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-gray-300 font-medium">{fmtDate(w.date)}</p>
+                      {isT && <span className="text-[9px] bg-emerald-500/20 text-emerald-400 font-bold px-1.5 py-0.5 rounded">Today</span>}
+                    </div>
+                    <p className="text-[10px] text-gray-600 mt-0.5">{w.date}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {d !== null && (
+                      <span className={`text-xs font-bold ${up ? 'text-red-400' : dn ? 'text-emerald-400' : 'text-gray-500'}`}>
+                        {up ? '+' : ''}{d} kg
+                      </span>
+                    )}
+                    <p className="text-sm font-extrabold text-white tabular-nums w-16 text-right">{w.weight} kg</p>
+                    <button
+                      onClick={() => setWeights(prev => prev.filter(e => e.date !== w.date))}
+                      className="w-5 h-5 rounded-full bg-gray-700 hover:bg-red-500 text-gray-400 hover:text-white text-xs flex items-center justify-center transition-colors"
+                    >×</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
+const DEFAULT_PROFILE = {
+  sex: 'male', age: '', weight: '', height: '', activity: '1.2',
+  useOverride: true, customTdee: String(DEFAULT_GOAL),
+};
+
 function App() {
-  const [diary, setDiary] = useState(loadDiary);
+  const [tab,      setTab]      = useState('diary');
+  const [date,     setDate]     = useState(todayStr);
+  const [diary,    setDiary]    = useState(() => lsGet(LS.diary,    {}));
+  const [profile,  setProfile]  = useState(() => lsGet(LS.profile,  DEFAULT_PROFILE));
+  const [workouts, setWorkouts] = useState(() => lsGet(LS.workouts, []));
+  const [weights,  setWeights]  = useState(() => lsGet(LS.weights,  []));
 
-  // Persist on every change
-  useEffect(() => {
-    localStorage.setItem(STORE_KEY, JSON.stringify(diary));
-  }, [diary]);
+  useEffect(() => { localStorage.setItem(LS.diary,    JSON.stringify(diary));    }, [diary]);
+  useEffect(() => { localStorage.setItem(LS.profile,  JSON.stringify(profile));  }, [profile]);
+  useEffect(() => { localStorage.setItem(LS.workouts, JSON.stringify(workouts)); }, [workouts]);
+  useEffect(() => { localStorage.setItem(LS.weights,  JSON.stringify(weights));  }, [weights]);
 
-  const addEntry    = entry => setDiary(prev => [...prev, entry]);
-  const removeEntry = id    => setDiary(prev => prev.filter(e => e.id !== id));
+  const dailyGoal = getGoal(profile);
 
-  function handleNewDay() {
-    if (window.confirm('Start a new day? All logged meals will be cleared.')) {
-      setDiary([]);
-    }
+  function addEntry(d, entry) {
+    setDiary(prev => ({ ...prev, [d]: [...(prev[d] || []), entry] }));
+  }
+  function removeEntry(d, id) {
+    setDiary(prev => ({ ...prev, [d]: (prev[d] || []).filter(e => e.id !== id) }));
   }
 
-  // Totals
-  const totals = diary.reduce(
-    (acc, e) => ({ cal: acc.cal + e.cal, pro: acc.pro + e.pro, fat: acc.fat + e.fat, carb: acc.carb + e.carb }),
-    { cal: 0, pro: 0, fat: 0, carb: 0 }
-  );
-  const consumed  = r1(totals.cal);
-  const remaining = r1(DAILY_GOAL - consumed);
-  const pct       = Math.min((consumed / DAILY_GOAL) * 100, 100);
-  const isOver    = remaining < 0;
+  const TABS = [
+    { id: 'diary',    label: 'Diary'    },
+    { id: 'workouts', label: 'Workouts' },
+    { id: 'profile',  label: 'Profile'  },
+  ];
 
-  const barColor = pct < 70
-    ? 'from-emerald-500 to-emerald-400'
-    : pct < 90
-      ? 'from-amber-500 to-amber-400'
-      : 'from-red-500 to-red-400';
-
-  const today = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric'
-  });
+  const todayEntries   = diary[todayStr()] || [];
+  const todayConsumed  = r1(todayEntries.reduce((s, e) => s + e.cal, 0));
+  const todayPct       = Math.min(Math.round((todayConsumed / dailyGoal) * 100), 100);
 
   return (
     <div className="min-h-screen bg-gray-950">
 
-      {/* ── Header ── */}
-      <header className="sticky top-0 z-20 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800/80 px-4 py-3">
-        <div className="max-w-2xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-base font-extrabold tracking-tight">Meal Tracker</h1>
-            <p className="text-[11px] text-gray-500 mt-0.5">{today}</p>
+      {/* ── Sticky Header ── */}
+      <header className="sticky top-0 z-20 bg-gray-900/95 backdrop-blur-md border-b border-gray-800/80">
+        <div className="max-w-2xl mx-auto px-4">
+          <div className="flex justify-between items-center pt-3 pb-2">
+            <div>
+              <h1 className="text-base font-extrabold tracking-tight">Health Dashboard</h1>
+              <p className="text-[10px] text-gray-500 mt-0.5">
+                Goal: <span className="text-gray-300 font-semibold">{dailyGoal} kcal</span>
+                &ensp;·&ensp;
+                Today: <span className="font-semibold text-gray-300">{todayConsumed} kcal</span>
+                &ensp;
+                <span className={`font-bold ${todayPct > 90 ? 'text-red-400' : todayPct > 70 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  ({todayPct}%)
+                </span>
+              </p>
+            </div>
           </div>
-          <button
-            onClick={handleNewDay}
-            className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 px-3 py-1.5 rounded-xl transition-all font-semibold"
-          >
-            ↺ New Day
-          </button>
+          {/* Tab bar */}
+          <div className="flex -mb-px">
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`px-5 py-2.5 text-xs font-extrabold tracking-widest uppercase border-b-2 transition-all ${
+                  tab === t.id
+                    ? 'border-emerald-500 text-emerald-400'
+                    : 'border-transparent text-gray-600 hover:text-gray-400'
+                }`}
+              >{t.label}</button>
+            ))}
+          </div>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-5 space-y-4 pb-16">
-
-        {/* ── Daily Summary Card ── */}
-        <div className="bg-gray-800/70 rounded-2xl border border-gray-700/40 p-5 space-y-5">
-
-          {/* Calorie headline */}
-          <div className="flex justify-between items-end">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.15em] text-gray-500 mb-1">Today's Intake</p>
-              <div className="flex items-end gap-2">
-                <span className="text-5xl font-black tabular-nums leading-none">{consumed}</span>
-                <span className="text-sm text-gray-400 mb-1">/ {DAILY_GOAL} kcal</span>
-              </div>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] uppercase tracking-[0.15em] text-gray-500 mb-1">
-                {isOver ? 'Over Budget' : 'Remaining'}
-              </p>
-              <p className={`text-3xl font-black tabular-nums ${isOver ? 'text-red-400' : 'text-emerald-400'}`}>
-                {isOver ? '+' : ''}{Math.abs(remaining)}
-                <span className="text-base font-semibold ml-1">kcal</span>
-              </p>
-            </div>
-          </div>
-
-          {/* Progress bar */}
-          <div>
-            <div className="h-3.5 bg-gray-700/80 rounded-full overflow-hidden">
-              <div
-                className={`h-full bg-gradient-to-r ${barColor} rounded-full transition-all duration-700 ease-out`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-[10px] text-gray-600 mt-1 px-0.5">
-              <span>0</span>
-              <span className={`font-bold ${isOver ? 'text-red-400' : pct > 80 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                {Math.round(pct)}%
-              </span>
-              <span>{DAILY_GOAL} kcal</span>
-            </div>
-          </div>
-
-          {/* Macro pills */}
-          <div className="flex gap-2.5">
-            <StatPill label="Protein" value={r1(totals.pro)}  unit="g" color="text-blue-400"   bg="bg-blue-400/10"   />
-            <StatPill label="Carbs"   value={r1(totals.carb)} unit="g" color="text-amber-400"  bg="bg-amber-400/10"  />
-            <StatPill label="Fat"     value={r1(totals.fat)}  unit="g" color="text-purple-400" bg="bg-purple-400/10" />
-          </div>
-
-          {/* Meal breakdown mini-bar */}
-          {diary.length > 0 && (
-            <div className="border-t border-gray-700/40 pt-4 grid grid-cols-4 gap-2 text-center">
-              {MEALS.map(slot => {
-                const slotCals = r1(diary.filter(e => e.slot === slot).reduce((s, e) => s + e.cal, 0));
-                const slotPct  = consumed > 0 ? Math.round((slotCals / consumed) * 100) : 0;
-                return (
-                  <div key={slot}>
-                    <p className="text-sm font-bold text-white">{slotCals}</p>
-                    <p className="text-[10px] text-gray-500">{slot}</p>
-                    <p className="text-[10px] text-gray-600">{slotPct}%</p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* ── Meal Cards ── */}
-        {MEALS.map(slot => (
-          <MealCard
-            key={slot}
-            slot={slot}
-            entries={diary}
+      {/* ── Main content ── */}
+      <main className="max-w-2xl mx-auto px-4 py-5 pb-20">
+        {tab === 'diary' && (
+          <DiaryTab
+            diary={diary}
             onAdd={addEntry}
             onRemove={removeEntry}
+            date={date}
+            setDate={setDate}
+            dailyGoal={dailyGoal}
           />
-        ))}
-
+        )}
+        {tab === 'workouts' && (
+          <WorkoutsTab workouts={workouts} setWorkouts={setWorkouts} />
+        )}
+        {tab === 'profile' && (
+          <ProfileTab
+            profile={profile}
+            setProfile={setProfile}
+            weights={weights}
+            setWeights={setWeights}
+          />
+        )}
       </main>
     </div>
   );
